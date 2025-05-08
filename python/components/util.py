@@ -1,5 +1,5 @@
 import re
-
+import sys
 
 def matchStr(inAddr, fieldName, inStr):
     matchedPos = None
@@ -30,7 +30,7 @@ def matchChiStreetOrVillage(inAddr, inDict):
      },
 
     """
-    matches = []
+    matches = []            
 
     key = None
     if 'StreetName' in inDict: key = 'StreetName'
@@ -55,7 +55,7 @@ def matchChiStreetOrVillage(inAddr, inDict):
     if matchedPos != None:
         matchedPosEnd = matchedPos[1]
         inStr = inAddr[matchedPosEnd:]
-        reResult = re.match('([0-9A-z]+)[至及\-]*([0-9A-z]*)號', inStr)  # this matches '591-593號QWER'
+        reResult = re.match(r'([0-9A-z]+)[至及\-]*([0-9A-z]*)號', inStr)  # this matches '591-593號QWER'
         # print("a", matchedPosEnd, inStr, reResult)
         if reResult:
             inAddrBNoSpan = tuple(matchedPosEnd + x for x in reResult.span())
@@ -160,3 +160,86 @@ def getSimilarityWithOGCIO(inAddr, ogcioResult):
     s.ogcioMatches = matches
 
     return s
+
+def ParseAddress(result, input_address):
+    """
+    Parses and ranks address results based on similarity to the input address.
+
+    This function takes a list of address results and an input address, calculates
+    the similarity between each result and the input address, sorts the results
+    based on the similarity score, and returns the best match.
+
+    Args:
+        result (list): A list of dictionaries containing address information.
+            Each dictionary should have a 'chi' key with the Chinese address.
+        input_address (str): The original input address to compare against.
+
+    Returns:
+        dict: The best matching address result, which is the first item in the
+            sorted list of results.
+
+    Raises:
+        Exception: If any error occurs during the parsing process. The exception
+            details, including the line number and error message, are printed.
+
+    Note:
+        - The function modifies the input 'result' list by adding a 'match' key
+          to each dictionary, containing the similarity score.
+        - The similarity is calculated using the getSimilarityWithOGCIO function
+          from the util module.
+        - Results are sorted in descending order based on the similarity score.
+    """
+    try:
+        # print(result)
+        for (idx, aResult) in enumerate(result):
+            result[idx]['match'] = getSimilarityWithOGCIO(input_address, aResult['chi'])
+        result.sort(key=lambda x: x['match'].score, reverse=True)
+        return result[0]
+    except Exception as e:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        print(f'util.py:ParseAddress():line_num={exc_tb.tb_lineno},exception={e}')
+
+
+def flattenOGCIO(response_json):
+    """
+       Flattens the OGCIO API address response JSON.
+
+       This function takes a JSON response from the OGCIO address parsing service and flattens it
+       into a more manageable list of dictionaries. Each dictionary in the output list represents
+       a single address with key information extracted from the original nested structure.
+
+       Args:
+           response_json (list): A list of dictionaries containing the OGCIO address response data.
+
+       Returns:
+           flat_result (list): A list of flattened dictionaries, each containing:
+               - rank (int): The index of the address in the original response.
+               - chi (str): Chinese premises address.
+               - eng (str): English premises address.
+               - geo (dict): Geospatial information of the address.
+               - OGCIO_score (float): Validation score provided by OGCIO.
+
+       Raises:
+           Exception: If there's an error during the flattening process, it prints an error message
+                      with the line number and exception details.
+
+       """
+    try:
+        flat_result = []
+        for idx, addr in enumerate(response_json):
+            temp = {
+                'rank': idx,
+                'chi': addr['Address']['PremisesAddress']['ChiPremisesAddress'],
+                'eng': addr['Address']['PremisesAddress']['EngPremisesAddress'],
+                'geo': addr['Address']['PremisesAddress']['GeospatialInformation'],
+                'OGCIO_score': addr['ValidationInformation']['Score'],
+            }
+            flat_result.append(temp)
+        return (flat_result)
+    except Exception as e:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        flattenOGCIO_error = f'util.py:flattenOGCIO():line_num={exc_tb.tb_lineno},exception={e}'
+        print(flattenOGCIO_error)
+
+def removeFloor(inputAddress):
+ return re.sub(r"([0-9A-z\s\-]+[樓層]|[0-9A-z號\s\-]+[舖鋪]|地[下庫]|平台).*", "", inputAddress)
